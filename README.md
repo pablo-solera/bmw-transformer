@@ -60,7 +60,9 @@ bun test
 }
 ```
 
-La respuesta es `202 { requestId, status, statusUrl }`. Endpoints adicionales: `GET /reports/:requestId`, `GET /reports/:requestId/download`, `GET /health`, `GET /openapi.json`, `GET /docs`.
+La respuesta es `202 { requestId, status, statusUrl }`. Endpoints adicionales: `GET /reports/:requestId`, `GET /reports/:requestId/download`, `GET /reports/:requestId/source`, `GET /health`, `GET /openapi.json`, `GET /docs`.
+
+En `/docs`, abre `POST /reports` → **Try it out**. El formulario multipart muestra `file` como selector de fichero y `metadata` como campo de texto; pega el JSON del ejemplo en ese campo. Para descargar el XLSX una vez completado, abre `GET /reports/{requestId}/download` en una pestaña: el endpoint redirige a S3 y Swagger Try it out puede estar sujeto al CORS del bucket.
 
 ## Compatibilidad legacy
 
