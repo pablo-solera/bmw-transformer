@@ -1,0 +1,11 @@
+{
+  "source": "WTCO015-LISTE.LST",
+  "workbook": "1IX_04.xlsx",
+  "sheet": "DDA contra BMW",
+  "qRecords": 2051,
+  "eligibleRows": 509,
+  "header": ["Nº Operacion", "DDA", null, "11CF", "12CF", "21CF", "22CF", "31CF", "32CF", "41CF", "42CF", "51CF", "52CF", "61CF", "62CF"],
+  "eligibleOperationTimeSha256": "727dd934f921d7590666246cf42525b74171aee28cc3de029511cc177de8fb17",
+  "first": ["00 00 105", 2],
+  "last": ["97 62 501", 2]
+}
