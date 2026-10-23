@@ -1,0 +1,17 @@
+# Persistent local SQL Server for trying the BMW_Labour load by hand.
+# Set SQL_DEV_SA_PASSWORD in your shell (never commit it); see README "SQL Server local".
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${SQL_DEV_SA_PASSWORD:?Set SQL_DEV_SA_PASSWORD in your shell}
+    ports:
+      - "127.0.0.1:11434:1433"
+    volumes:
+      - sqlserver-dev-data:/var/opt/mssql
+    restart: unless-stopped
+
+volumes:
+  sqlserver-dev-data:

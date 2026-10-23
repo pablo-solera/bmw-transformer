@@ -72,6 +72,24 @@ La respuesta es `202 { requestId, status, statusUrl }`. Endpoints adicionales: `
 
 En `/docs`, abre `POST /reports` → **Try it out**. El formulario multipart muestra `file` como selector de fichero y `metadata` como campo de texto; pega el JSON del ejemplo en ese campo. Para descargar el XLSX una vez completado, abre `GET /reports/{requestId}/download` en una pestaña: el endpoint redirige a S3 y Swagger Try it out puede estar sujeto al CORS del bucket.
 
+## SQL Server local
+
+Para comprobar a mano que se crean las tablas, levanta un SQL Server persistente en Docker (la contraseña solo existe en tu shell):
+
+```bash
+export SQL_DEV_SA_PASSWORD='<una contraseña fuerte>'
+docker compose -f docker-compose.sql-dev.yml up -d
+docker compose -f docker-compose.sql-dev.yml exec sqlserver /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$SQL_DEV_SA_PASSWORD" -Q "IF DB_ID('BMW_Labour') IS NULL CREATE DATABASE [BMW_Labour] COLLATE Latin1_General_CI_AS"
+```
+
+En el `.env` del transformer: `SQL_ENABLED=true`, `SQL_SERVER=127.0.0.1`, `SQL_PORT=11434`, `SQL_DATABASE=BMW_Labour`, `SQL_USER=sa`, `SQL_PASSWORD` (la misma), `SQL_TRUST_SERVER_CERTIFICATE=true` y `SQL_TLS_SERVER_NAME=localhost`. Comprueba la conexión con `bun run check:sql`, lanza `bun run start` y `bun run worker`, y tras una carga (`POST /loads`) consulta las tablas:
+
+```bash
+docker compose -f docker-compose.sql-dev.yml exec sqlserver /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$SQL_DEV_SA_PASSWORD" -d BMW_Labour -Q "SELECT name FROM sys.tables; SELECT * FROM nomCamposTabla"
+```
+
+`bun run test:sql` prueba lo mismo de forma automática contra un SQL Server desechable.
+
 ## Compatibilidad legacy
 
 El parser `RegistrosQ` sigue literalmente `feat/acciona-refactor-dotnet:infrastructure/Verbund/LstVerbundListingParser.cs`: bloque Q, Latin-1/Windows-1252, Tiempo offset 10/5 y Operacion offset 16/10. El filtro del Excel excluye `KN` y omite operaciones cuya frecuencia sea distinta de 1.
