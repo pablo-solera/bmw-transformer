@@ -1,0 +1,25 @@
+{
+  "description": "Primer registro en el export físico CSV de BMW_Labour.dbo.[11I_05/0]; export de referencia en Downloads",
+  "typekeys": ["11HC", "21HC", "23FB", "33FB", "41FR", "53FB", "61FR", "61HC"],
+  "firstRowsByFlatrate": {
+    "1114505": [null, null, null, null, "20", null, null, "40"],
+    "1114890": ["1", null, null, null, null, null, null, null],
+    "1128510": [null, null, null, null, null, null, null, "13"],
+    "1128560": [null, null, null, null, null, null, null, "24"],
+    "1142635": [null, null, null, null, null, null, "23", null],
+    "1153942": [null, null, null, null, "30", null, null, null],
+    "1214602": ["9", null, null, null, null, "39", null, null],
+    "1214604": [null, null, null, null, null, "40", null, null],
+    "1354532": [null, null, null, null, "2", null, null, null],
+    "1362560": [null, null, null, null, "1", null, "1", "1"],
+    "3213905": ["1", "1", "1", "1", "1", "1", "1", "1"],
+    "3400527": [null, null, null, null, null, "6", null, null],
+    "4100800": ["32", "32", "32", "32", "32", "32", "32", "32"],
+    "4111950": ["27", "27", "27", "27", "27", "27", "27", "27"],
+    "4111951": ["27", "27", "27", "27", "27", "27", "27", "27"],
+    "4161541": [null, null, null, null, null, null, "9", "9"],
+    "4161991": ["7", "7", "7", "7", "7", "7", "7", "7"],
+    "5133568": [null, null, null, null, "5", null, null, "5"],
+    "5171599": [null, null, null, null, "52", null, null, "52"]
+  }
+}

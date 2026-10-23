@@ -5,6 +5,8 @@ import { buildLegacyWorkbook } from "../report/workbook.js";
 import { getBytes, objectKey, putBytes, putJson } from "../storage.js";
 import type { ReportInput } from "../types.js";
 import type { ReportState } from "../types.js";
+import { config } from "../config.js";
+import { persistLegacyPivot } from "../sql/persist-pivot.js";
 
 export async function runReportJob(requestId: string, state: ReportState, update: (patch: Partial<ReportState>) => Promise<void>) {
   const input = state.input;
@@ -17,6 +19,15 @@ export async function runReportJob(requestId: string, state: ReportState, update
   const imported = await importExtractedData(input, async (progress, stage) => update({ status: "importing", stage, progress: 10 + progress }));
   await update({ status: "pivoting", stage: "Generando pivote legacy", progress: 35 });
   const pivot = buildLegacyPivot(input, imported.catalog, imported.rates, imported.selectedTypekeys);
+  let sqlPersistence: Record<string, unknown>;
+  if (config.sqlEnabled) {
+    await update({ status: "persisting", stage: `Persistiendo ${pivot.tableName} en BMW_Labour`, progress: 45 });
+    sqlPersistence = await persistLegacyPivot(input, pivot, async (percent, stage) => {
+      await update({ status: "persisting", stage, progress: 45 + Math.floor(percent * 0.15) });
+    });
+  } else {
+    sqlPersistence = { enabled: false, persisted: false, tableName: pivot.tableName, rows: 0, columns: pivot.columns.length };
+  }
   await update({ status: "parsing-dda", stage: "Leyendo bloque Q del LST", progress: 60 });
   const dda = toDdaRecords(listing);
   const outputRows = legacyExcelRows(dda, pivot);
@@ -25,7 +36,7 @@ export async function runReportJob(requestId: string, state: ReportState, update
   const filename = `${input.axCode}_${input.edition.replace(/\//g, "_")}_DDA_contra_BMW.xlsx`;
   const reportKey = `${reportPrefix}/${filename}`;
   await putBytes(reportKey, workbook, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  await putJson(`${reportPrefix}/pivot.json`, { tableName: pivot.tableName, typekeys: pivot.typekeys, rowCount: pivot.rows.length, rows: pivot.rows });
+  await putJson(`${reportPrefix}/pivot.json`, { tableName: pivot.tableName, typekeys: pivot.typekeys, columns: pivot.columns, rowCount: pivot.rows.length, rows: pivot.rows });
   const summary = {
     source: { filename: listing.header.sourceFile, header: listing.header, qRows: listing.blocks.Q.length },
     input: input as ReportInput,
@@ -33,6 +44,7 @@ export async function runReportJob(requestId: string, state: ReportState, update
     selectedTypekeys: imported.selectedTypekeys,
     staging: { catalogRows: imported.catalog.length, flatrateRows: imported.rates.length },
     pivot: { tableName: pivot.tableName, rows: pivot.rows.length, columns: pivot.typekeys.length },
+    sql: sqlPersistence,
     dda: { qRows: dda.length, eligibleOperations: outputRows.length },
     ignoredSqlErrors: pivot.ignoredSqlErrors,
     reportKey,

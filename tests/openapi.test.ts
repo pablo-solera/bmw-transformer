@@ -15,6 +15,8 @@ test("OpenAPI exposes a multipart file picker and serialized metadata field", ()
   expect(multipart.schema.required).toEqual(["file", "metadata"]);
   expect(multipart.schema.properties.file).toMatchObject({ type: "string", format: "binary" });
   expect(multipart.schema.properties.metadata).toMatchObject({ type: "string" });
+  expect(multipart.schema.properties.metadata.example).toContain("\"brand\"");
+  expect(multipart.schema.properties.metadata.example).toContain("\"model\"");
   const example = JSON.parse(multipart.schema.properties.metadata.example) as { axCode: string; typekeys: Array<{ typekey: string }> };
   expect(example.axCode).toBe("11I");
   expect(example.typekeys[0]?.typekey).toBe("11HC");

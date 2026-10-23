@@ -48,7 +48,7 @@ export const openApiDocument = {
                     type: "string",
                     description: "JSON serializado con los metadatos de la transformación. Copia y edita el ejemplo JSON.",
                     example: JSON.stringify({
-                      axCode: "11I", edition: "05_0", manufacturer: "BMW", series: "4", family: "G26", date: "20260928", group: "BMW",
+                      axCode: "11I", edition: "05_0", manufacturer: "BMW", brand: "BMW", model: "4", series: "4", family: "G26", date: "20260928", group: "BMW",
                       typekeys: [{ typekey: "11HC" }, { typekey: "21HC" }, { typekey: "23FB" }, { typekey: "33FB" }, { typekey: "41FR" }, { typekey: "53FB" }, { typekey: "61FR" }, { typekey: "61HC" }],
                     }),
                   },
@@ -115,7 +115,8 @@ export const openApiDocument = {
         type: "object",
         properties: {
           axCode: { type: "string", maxLength: 10, example: "11I" }, edition: { type: "string", maxLength: 10, example: "05_0" },
-          manufacturer: { type: "string", maxLength: 10, default: "BMW" }, series: { type: "string", maxLength: 10, example: "4" },
+          manufacturer: { type: "string", maxLength: 10, default: "BMW" }, brand: { type: "string", maxLength: 10, description: "Marca para nomCamposTabla; por defecto manufacturer" },
+          model: { type: "string", maxLength: 10, description: "Modelo para nomCamposTabla; por defecto series sin apóstrofes" }, series: { type: "string", maxLength: 10, example: "4" },
           family: { type: "string", maxLength: 10, example: "G26" }, date: { type: "string", pattern: "^\\d{8}$", example: "20260928" },
           group: { type: "string", default: "BMW" }, typekeys: { type: "array", minItems: 1, items: { $ref: "#/components/schemas/TypekeyInput" } },
         },
@@ -124,7 +125,7 @@ export const openApiDocument = {
       ReportState: {
         type: "object",
         properties: {
-          requestId: { type: "string", format: "uuid" }, status: { type: "string", enum: ["queued", "resolving", "importing", "pivoting", "parsing-dda", "reporting", "completed", "failed"] },
+          requestId: { type: "string", format: "uuid" }, status: { type: "string", enum: ["queued", "resolving", "importing", "pivoting", "persisting", "parsing-dda", "reporting", "completed", "failed"] },
           stage: { type: "string" }, progress: { type: "integer", minimum: 0, maximum: 100 }, input: { $ref: "#/components/schemas/ReportMetadata" },
           reportKey: { type: "string" }, summary: { type: "object", additionalProperties: true }, error: { type: "string" },
           createdAt: { type: "string", format: "date-time" }, updatedAt: { type: "string", format: "date-time" },

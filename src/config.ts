@@ -18,6 +18,19 @@ const schema = z.object({
   LEGACY_LOCALE: z.string().default("es-ES"),
   LEGACY_ANSI_ENCODING: z.string().default("windows-1252"),
   BMW_READER_GROUP: z.string().default("BMW"),
+  SQL_ENABLED: z.enum(["true", "false"]).default("true"),
+  SQL_SERVER: z.string().default(""),
+  SQL_PORT: z.coerce.number().int().positive().max(65535).default(1433),
+  SQL_INSTANCE: z.string().default(""),
+  SQL_DATABASE: z.string().default("BMW_Labour"),
+  SQL_TLS_SERVER_NAME: z.string().default(""),
+  SQL_USER: z.string().default(""),
+  SQL_PASSWORD: z.string().default(""),
+  SQL_ENCRYPT: z.enum(["true", "false"]).default("true"),
+  SQL_TRUST_SERVER_CERTIFICATE: z.enum(["true", "false"]).default("false"),
+  SQL_CONNECTION_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
+  SQL_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(120000),
+  SQL_POOL_MAX: z.coerce.number().int().positive().max(32).default(4),
 });
 
 const raw = schema.parse(process.env);
@@ -26,4 +39,7 @@ export const config = {
   port: raw.PORT,
   s3ForcePathStyle: raw.S3_FORCE_PATH_STYLE === "true",
   s3AutoCreateBucket: raw.S3_AUTO_CREATE_BUCKET === "true",
+  sqlEnabled: raw.SQL_ENABLED === "true",
+  sqlEncrypt: raw.SQL_ENCRYPT === "true",
+  sqlTrustServerCertificate: raw.SQL_TRUST_SERVER_CERTIFICATE === "true",
 } as const;

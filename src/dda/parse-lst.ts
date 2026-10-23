@@ -35,7 +35,7 @@ export function parseMasterListingBytes(bytes: Uint8Array, sourceFile: string): 
       const parsedWu = wu !== null && /^[-+]?\d+$/.test(wu) ? Number(wu) : null;
       records.push({
         verbund: field(line, 1, 2), side: field(line, 4, 1), aggregat: field(line, 6, 1), tiempo: parsedWu,
-        operacion: field(line, 16, 10), kl: field(line, 29, 1), texto: field(line, 31, 41), baugrupen: field(line, 72, 5),
+        operacion: field(line, 16, 12), kl: field(line, 29, 1), texto: field(line, 31, 41), baugrupen: field(line, 72, 5),
         auto_1: field(line, 77, 3), auto_2: field(line, 80, 3), text_long: field(line, 83, 5),
         containing_verbund: field(line, 88, 16), special_time: field(line, 104, 3), ut: field(line, 108, 2), av: field(line, 110, 3),
       });

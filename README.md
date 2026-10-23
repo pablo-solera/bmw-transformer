@@ -6,15 +6,15 @@ API Bun/TypeScript que replica en memoria la transformación BMW de Acciona VB6 
 
 1. `POST /reports` recibe multipart `file` (`.LST` o ZIP con exactamente un `.LST`) y `metadata` JSON.
 2. El worker busca, por typekey, el marcador `{typekey}_completed.json` más reciente en S3 bajo `BMW/{manufacturer}/labour/{series}/{family}/{YYYYMMDD}/{typekey}/` (o la fecha indicada).
-3. Reproduce las etapas Acciona `Importar Datos`, `Comparar Types` y `Generar Excel`, sin escribir a SQL Server.
-4. Sube el XLSX, `pivot.json`, `summary.json` y el LST fuente a `BMW/reports/{AxCode}/{Edicion}/{requestId}/`.
+3. Reproduce las etapas Acciona `Importar Datos` y `Comparar Types` en memoria, reemplaza atómicamente `[BMW_Labour].[dbo].[{AxCode}_{Edicion}]` y las filas correspondientes de `nomCamposTabla`, y luego genera `DDA contra BMW`.
+4. Sube el XLSX, `pivot.json`, `summary.json` y el LST fuente a `{group}/{manufacturer}/reports/{AxCode}/{Edicion}/{requestId}/`.
 5. Polling con `GET /reports/:requestId`; descarga con `GET /reports/:requestId/download` (307 a URL firmada S3).
 
 La request usa `baseType` opcional. Acciona leía el catálogo de la carpeta `{baseType}` pero los HG de la carpeta `{typekey}`; si difieren, el catálogo puede no enlazar flatrates. Es un comportamiento legacy preservado.
 
 ## Inicio local
 
-Requisitos: Bun 1.3+, Redis 7+ y acceso al bucket S3 usado por el reader.
+Requisitos: Bun 1.3+, Redis 7+, SQL Server accesible con permisos acotados en `BMW_Labour`, y acceso al bucket S3 usado por el reader.
 
 ```powershell
 Copy-Item .env.example .env
@@ -72,6 +72,12 @@ El port conserva errores y defectos observados: conversión `CDec` es-ES, lectur
 
 La ordenación SQL collation `Latin1_General_CI_AS` se aproxima en JavaScript con `Intl.Collator`; los planes de ordenación/empates de SQL Server no son deterministas si el `ORDER BY` no desambigua las filas.
 
+La operación Q se lee con longitud 12 para preservar el sufijo `ZAX` que aparece en el CSV de `RegistrosQ` de la comparación real. El parser C# actualmente versionado en `acciona` usa longitud 10; `docs/legacy-mapping.md` explica la diferencia observada. El pivote emula el `UPDATE` acumulativo, el `DISTINCT *`, los desempates por DDL y el `Trim` VB6. Para comparar con el CSV exportado, configura `BMW_LEGACY_PIVOT_CSV` y ejecuta `bun test --test-name-pattern "legacy-equivalent pivot rows"`; ese test lee S3 y necesita acceso al bucket.
+
 ## S3 y secretos
 
-Configura `S3_ENDPOINT`, `S3_BUCKET`, credenciales, `S3_PREFIX`, `REDIS_URL` en `.env`. No se guardan credenciales en los jobs ni en sus logs. Para Docker Compose se usa Redis local y los parámetros S3 del `.env`.
+Configura `S3_ENDPOINT`, `S3_BUCKET`, credenciales, `S3_PREFIX`, `REDIS_URL` y la conexión `SQL_*` en `.env` o en el gestor de secretos del despliegue. SQL persistence está habilitada por defecto; sin SQL_SERVER/SQL_USER/SQL_PASSWORD el worker no arranca. No se guardan credenciales en jobs ni en logs. Para Docker Compose se usa Redis local; el SQL Server debe ser accesible desde el contenedor worker.
+
+Comprueba la conexión SQL de solo lectura, incluyendo base, collation y esquema de `nomCamposTabla`, con `bun run check:sql`. El comando no muestra usuario ni contraseña.
+
+La persistencia SQL es deliberadamente limitada al pivote por edición y `nomCamposTabla`, que consume el Visor de Acciona. El transformer no escribe las tablas staging, `LoRaro` ni `RegistrosQ`. Ver [Persistencia SQL legacy](docs/legacy-mapping.md#persistencia-sql-legacy) para columnas, reemplazo atómico, permisos y pruebas. Para probar contra un SQL Server efímero local: `bun run test:sql` (Docker requerido; usa credenciales aleatorias solo en el contenedor desechable).

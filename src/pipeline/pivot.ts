@@ -1,6 +1,7 @@
 import type { DdaRecord, ReportInput, StageCatalog, StageRate } from "../types.js";
 import { enforceNchar, sqlEquals, sqlLike, sqlSort as sqlSortLegacy } from "../legacy/sqlserver.js";
-import { vbExcelCell, vbInStr, vbMid } from "../legacy/vb.js";
+import { vbExcelCell, vbInStr, vbMid, vbTrim } from "../legacy/vb.js";
+import { normalizeLegacySeries } from "../legacy/series.js";
 
 export type PivotRow = {
   typekeyCatalog_id: string;
@@ -22,9 +23,10 @@ export type PivotRow = {
   insertionOrder: number;
 };
 
-export type PivotResult = { rows: PivotRow[]; typekeys: string[]; ignoredSqlErrors: string[]; tableName: string };
+export type PivotTypekeyColumn = { typekey: string; columnName: string; order: number };
+export type PivotResult = { rows: PivotRow[]; typekeys: string[]; columns: PivotTypekeyColumn[]; ignoredSqlErrors: string[]; tableName: string };
 
-const sqlV = (value: string, width: number, name: string) => enforceNchar(value, width, name).trimEnd();
+const sqlV = (value: string, width: number, name: string) => vbTrim(enforceNchar(value, width, name));
 const catalogTuple = (row: StageCatalog) => [row.id, row.number, row.text, row.entriesId, row.entriesNumber, row.entriesText];
 const tupleEquals = (left: string[], right: string[]) => left.every((v, index) => sqlEquals(v, right[index]));
 
@@ -34,18 +36,41 @@ function findCatalogRows(catalog: StageCatalog[], selectedTypekeys: string[]): S
   for (const row of rows) if (!distinct.some(existing => tupleEquals(catalogTuple(existing), catalogTuple(row)))) distinct.push(row);
   // ORDER BY entriesId, with remaining DISTINCT projected columns resolving ties in the legacy table scan.
   return distinct.sort((a, b) => sqlSortLegacy(a.entriesId, b.entriesId) || sqlSortLegacy(a.id, b.id) || sqlSortLegacy(a.number, b.number) || sqlSortLegacy(a.text, b.text) || sqlSortLegacy(a.entriesNumber, b.entriesNumber) || sqlSortLegacy(a.entriesText, b.entriesText))
-    .map(row => ({ ...row, id: row.id.trim(), number: row.number.trim(), text: row.text.trim(), entriesId: row.entriesId.trim(), entriesNumber: row.entriesNumber.trim(), entriesText: row.entriesText.trim() }));
+    .map(row => ({ ...row, id: vbTrim(row.id), number: vbTrim(row.number), text: vbTrim(row.text), entriesId: vbTrim(row.entriesId), entriesNumber: vbTrim(row.entriesNumber), entriesText: vbTrim(row.entriesText) }));
 }
 
-function ratesForCatalog(rates: StageRate[], selected: Set<string>, suffixPattern: string): StageRate[] {
-  return rates.filter(rate => selected.has(rate.typekeyIdEntriesId.toLocaleLowerCase("en-US")) && sqlLike(rate.catalogPaths, `%${suffixPattern}%`))
-    .sort((a, b) => sqlSortLegacy(a.flatrates_number, b.flatrates_number) || sqlSortLegacy(a.flatrates_awSheetOID, b.flatrates_awSheetOID) || sqlSortLegacy(a.typekeyIdEntriesId, b.typekeyIdEntriesId) || a.insertionOrder - b.insertionOrder);
+const databaseColumns = [
+  "typekeyIdEntriesId", "catalogPaths", "containsValidityExpression", "klammerText", "lackFlaeche", "lackStufe", "orderNumber", "rubrikText", "solrId", "sonderAw", "text", "valid",
+  "flatrates_awSheetOID", "flatrates_displayType", "flatrates_hasInklusivPositionen", "flatrates_hasUmfasstTexte", "flatrates_klammerText", "flatrates_lackFlaeche", "flatrates_lackStufe", "flatrates_lackwertMetallic", "flatrates_lackwertUni", "flatrates_number", "flatrates_ruestwert", "flatrates_sonderAw", "flatrates_tcRelevant", "flatrates_text", "flatrates_validFrom", "flatrates_validityExpression", "flatrates_value", "flatrates_workType",
+] as const;
+const explicitOrderColumns = ["flatrates_number", "flatrates_awSheetOID", "typekeyIdEntriesId"] as const;
+const distinctTieColumns = databaseColumns.filter(column => !explicitOrderColumns.includes(column as typeof explicitOrderColumns[number]));
+const rateValue = (row: StageRate, column: typeof databaseColumns[number]) => row[column];
+const canonicalSqlKey = (values: Array<string | null>) => JSON.stringify(values.map(value => value === null ? null : value.replace(/ +$/g, "").toLocaleLowerCase("en-US")));
+const rateDistinctKey = (row: StageRate) => JSON.stringify(databaseColumns.map(column => {
+  const value = rateValue(row, column);
+  return value === null ? null : value.replace(/ +$/g, "").toLocaleLowerCase("en-US");
+}));
+const pivotConditionKey = (row: PivotRow) => canonicalSqlKey([
+  row.typekeyCatalog_id, row.typekeyCatalog_number, row.typekeyCatalog_text, row.typekeyCatalog_entriesId, row.typekeyCatalog_entriesNumber, row.typekeyCatalog_entriesText,
+  row.typekeyIdEntriesId_catalogPaths, row.typekeyIdEntriesId_rubrikText, row.typekeyIdEntriesId_text, row.typekeyIdEntriesId_flatrates_awSheetOID,
+  row.typekeyIdEntriesId_flatrates_number, row.typekeyIdEntriesId_flatrates_text,
+]);
+function orderLegacyRates(left: StageRate, right: StageRate) {
+  for (const column of [...explicitOrderColumns, ...distinctTieColumns]) {
+    const order = sqlSortLegacy(rateValue(left, column), rateValue(right, column));
+    if (order) return order;
+  }
+  return left.insertionOrder - right.insertionOrder;
 }
 
 function buildRateMatchCache(rates: StageRate[], selected: Set<string>) {
+  const orderedRates = rates.filter(rate => selected.has(rate.typekeyIdEntriesId.toLocaleLowerCase("en-US"))).sort(orderLegacyRates);
   const groups = new Map<string, StageRate[]>();
-  for (const rate of rates) {
-    if (!selected.has(rate.typekeyIdEntriesId.toLocaleLowerCase("en-US"))) continue;
+  const orderByInsertion = new Map<number, number>();
+  for (let index = 0; index < orderedRates.length; index++) {
+    const rate = orderedRates[index]!;
+    orderByInsertion.set(rate.insertionOrder, index);
     const key = rate.catalogPaths;
     const bucket = groups.get(key);
     if (bucket) bucket.push(rate);
@@ -58,10 +83,19 @@ function buildRateMatchCache(rates: StageRate[], selected: Set<string>) {
     // Preserve T-SQL LIKE wildcard semantics, but run it once per distinct path instead
     // of once per flatrate for every catalog row.
     const matches: StageRate[] = [];
-    for (const [path, bucket] of groups) if (sqlLike(path, `%${suffixPattern}%`)) matches.push(...bucket);
-    matches.sort((a, b) => sqlSortLegacy(a.flatrates_number, b.flatrates_number) || sqlSortLegacy(a.flatrates_awSheetOID, b.flatrates_awSheetOID) || sqlSortLegacy(a.typekeyIdEntriesId, b.typekeyIdEntriesId) || a.insertionOrder - b.insertionOrder);
-    cache.set(suffixPattern, matches);
-    return matches;
+    const unique = new Map<string, StageRate>();
+    for (const [path, bucket] of groups) {
+      if (!sqlLike(path, `%${suffixPattern}%`)) continue;
+      for (const rate of bucket) {
+        const key = JSON.stringify(databaseColumns.map(column => rateValue(rate, column)?.replace(/ +$/g, "").toLocaleLowerCase("en-US") ?? null));
+        if (!unique.has(key)) unique.set(key, rate);
+      }
+    }
+    matches.push(...unique.values());
+    matches.sort((left, right) => (orderByInsertion.get(left.insertionOrder) ?? 0) - (orderByInsertion.get(right.insertionOrder) ?? 0));
+    const result = [...new Map(matches.map(rate => [rateDistinctKey(rate), rate])).values()];
+    cache.set(suffixPattern, result);
+    return result;
   };
 }
 
@@ -71,13 +105,14 @@ export function buildLegacyPivot(input: ReportInput, catalog: StageCatalog[], ra
   const typekeys = [...completedTypekeys];
   const tableName = `${input.axCode}_${input.edition}`;
   if (tableName.length > 12) throw new Error(`Legacy SQL fatal: nomCamposTabla.NomTable truncation (nchar(12)): ${tableName}`);
-  const model = input.series.replace(/'/g, "");
+  const model = normalizeLegacySeries(input.series);
   if (model.length > 10) throw new Error(`Legacy SQL fatal: nomCamposTabla.Model truncation (nchar(10)): ${model}`);
   const nomCampos = typekeys.map((typekey, index) => ({ nomCampo: enforceNchar(typekey, 10, "nomCamposTabla.nomCampo").trimEnd(), orden: index + 1 }));
   const selectedSet = new Set(typekeys.map(typekey => typekey.toLocaleLowerCase("en-US")));
   const matchingRates = buildRateMatchCache(rates, selectedSet);
   const catalogRows = findCatalogRows(catalog, typekeys);
   const rows: PivotRow[] = [];
+  const rowsByCondition = new Map<string, PivotRow[]>();
   const ignoredSqlErrors: string[] = [];
   let previous = { rubrikText: "", text: "", awSheetOID: "", number: "", flatText: "" };
   let laCondicionAdvance: string | null = null;
@@ -120,25 +155,47 @@ export function buildLegacyPivot(input: ReportInput, catalog: StageCatalog[], ra
         }
         firstLine = 0;
         const matchingSeeds = catalogRowsForEntry.filter(row => sqlEquals(row.typekeyIdEntriesId_flatrates_number, "0"));
+        const nextCondition = canonicalSqlKey([
+          catalogRow.id, catalogRow.number, catalogRow.text, catalogRow.entriesId, catalogRow.entriesNumber, catalogRow.entriesText,
+          vbTrim(rate.catalogPaths), vbTrim(rate.rubrikText), vbTrim(rate.text), vbTrim(rate.flatrates_awSheetOID), vbTrim(rate.flatrates_number), vbTrim(rate.flatrates_text),
+        ]);
         try {
           const expanded = rate.catalogPaths;
           if (expanded.length > 250) throw new Error("pivot.catalogPaths nvarchar(250) truncation");
-          for (const row of matchingSeeds) {
-            row.typekeyIdEntriesId_catalogPaths = expanded;
-            row.typekeyIdEntriesId_rubrikText = sqlV(rate.rubrikText, 250, "pivot.rubrikText");
-            row.typekeyIdEntriesId_text = sqlV(rate.text, 250, "pivot.text");
-            row.typekeyIdEntriesId_flatrates_awSheetOID = sqlV(rate.flatrates_awSheetOID, 250, "pivot.awSheetOID");
-            row.typekeyIdEntriesId_flatrates_number = sqlV(rate.flatrates_number, 250, "pivot.number");
-            row.typekeyIdEntriesId_flatrates_text = sqlV(rate.flatrates_text, 250, "pivot.flatrates_text");
-            row.typekeyIdEntriesId_flatrates_workType = sqlV(rate.flatrates_workType, 250, "pivot.workType");
-            row.orderNumber = sqlV(rate.orderNumber, 50, "pivot.orderNumber");
-            row.typekeyIdEntriesId_flatrates_klammerText = sqlV(rate.flatrates_klammerText, 250, "pivot.klammerText");
+          if ([rate.rubrikText, rate.text, rate.flatrates_awSheetOID, rate.flatrates_number, rate.flatrates_text, rate.flatrates_workType, rate.orderNumber, rate.flatrates_klammerText].some(value => value.length > 250)) throw new Error("pivot nvarchar(250) truncation");
+          if (rate.orderNumber.length > 50) throw new Error("pivot.orderNumber nvarchar(50) truncation");
+          const changes = matchingSeeds.map(row => ({
+            row,
+            catalogPaths: expanded,
+            rubrikText: sqlV(rate.rubrikText, 250, "pivot.rubrikText"),
+            text: sqlV(rate.text, 250, "pivot.text"),
+            awSheetOID: sqlV(rate.flatrates_awSheetOID, 250, "pivot.awSheetOID"),
+            number: sqlV(rate.flatrates_number, 250, "pivot.number"),
+            flatText: sqlV(rate.flatrates_text, 250, "pivot.flatrates_text"),
+            workType: sqlV(rate.flatrates_workType, 250, "pivot.workType"),
+            orderNumber: sqlV(rate.orderNumber, 50, "pivot.orderNumber"),
+            klammerText: sqlV(rate.flatrates_klammerText, 250, "pivot.klammerText"),
+          }));
+          for (const change of changes) {
+            change.row.typekeyIdEntriesId_catalogPaths = change.catalogPaths;
+            change.row.typekeyIdEntriesId_rubrikText = change.rubrikText;
+            change.row.typekeyIdEntriesId_text = change.text;
+            change.row.typekeyIdEntriesId_flatrates_awSheetOID = change.awSheetOID;
+            change.row.typekeyIdEntriesId_flatrates_number = change.number;
+            change.row.typekeyIdEntriesId_flatrates_text = change.flatText;
+            change.row.typekeyIdEntriesId_flatrates_workType = change.workType;
+            change.row.orderNumber = change.orderNumber;
+            change.row.typekeyIdEntriesId_flatrates_klammerText = change.klammerText;
+            const key = pivotConditionKey(change.row);
+            const bucket = rowsByCondition.get(key);
+            if (bucket) bucket.push(change.row);
+            else rowsByCondition.set(key, [change.row]);
           }
-          advanceTargets = matchingSeeds;
-          laCondicionAdvance = `${catalogRow.id}|${catalogRow.number}|${catalogRow.text}|${catalogRow.entriesId}|${catalogRow.entriesNumber}|${catalogRow.entriesText}|${rate.catalogPaths}|${rate.rubrikText}|${rate.text}|${rate.flatrates_awSheetOID}|${rate.flatrates_number}|${rate.flatrates_text}`;
         } catch (error) {
           ignoredSqlErrors.push(`compararModelo seed UPDATE ignored: ${error instanceof Error ? error.message : String(error)}`);
         }
+        laCondicionAdvance = nextCondition;
+        advanceTargets = rowsByCondition.get(nextCondition) ?? [];
         nuevaLine = 0;
       }
 
@@ -170,7 +227,8 @@ export function buildLegacyPivot(input: ReportInput, catalog: StageCatalog[], ra
     }
   }
 
-  return { rows, typekeys, ignoredSqlErrors, tableName };
+  const columns = nomCampos.map(({ nomCampo, orden }) => ({ typekey: nomCampo, columnName: `type_${nomCampo}`, order: orden }));
+  return { rows, typekeys, columns, ignoredSqlErrors, tableName };
 }
 
 function normalizeOperation(operation: string) {

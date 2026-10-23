@@ -14,6 +14,8 @@ export const reportInputSchema = z.object({
   axCode: z.string().min(1).max(10).regex(/^[A-Za-z0-9_]+$/),
   edition: z.string().min(1).max(10).regex(/^[A-Za-z0-9_]+(?:\/[A-Za-z0-9_]+)*$/),
   manufacturer: z.string().min(1).max(10).regex(/^[A-Za-z0-9_]+$/).default("BMW"),
+  brand: z.string().min(1).max(10).regex(/^[A-Za-z0-9_]+$/).optional(),
+  model: z.string().min(1).max(10).optional(),
   series: z.string().min(1).max(10),
   family: z.string().min(1).max(10).regex(/^[A-Za-z0-9_]+$/),
   date: z.string().regex(/^\d{8}$/).optional(),
@@ -52,7 +54,12 @@ export function createApp(dependencies: AppDependencies = defaults) {
     const duplicates = input.typekeys.map(item => item.typekey).filter((typekey, index, list) => list.indexOf(typekey) !== index);
     if (duplicates.length) return res.status(400).json({ error: `Typekeys duplicados: ${[...new Set(duplicates)].join(", ")}` });
     const listing = extractLstUpload(new Uint8Array(req.file.buffer), req.file.originalname);
-    const reportInput = { ...input, sourceFilename: listing.filename };
+    const reportInput = {
+      ...input,
+      brand: input.brand ?? input.manufacturer,
+      model: input.model ?? input.series.replace(/'/g, "").trim(),
+      sourceFilename: listing.filename,
+    };
     const requestId = randomUUID();
     const sourceKey = dependencies.objectKey(input.group, input.manufacturer, "reports", input.axCode, input.edition, requestId, "source.lst");
     await dependencies.putBytes(sourceKey, listing.bytes, "application/octet-stream");

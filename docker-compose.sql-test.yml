@@ -1,0 +1,9 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${SQL_TEST_SA_PASSWORD:?Set by scripts/run-sql-integration-tests.ts}
+    ports:
+      - "127.0.0.1:11433:1433"

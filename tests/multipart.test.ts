@@ -39,7 +39,7 @@ test("POST /reports accepts Swagger multipart file + metadata fields", async () 
     expect(response.status).toBe(202);
     const result = await response.json() as { requestId: string; status: string; statusUrl: string };
     expect(result).toMatchObject({ status: "queued", statusUrl: `/reports/${result.requestId}` });
-    expect(calls.input).toMatchObject({ axCode: "11I", edition: "05_0", typekeys: [{ typekey: "11HC" }], sourceFilename: "listing.LST" });
+    expect(calls.input).toMatchObject({ axCode: "11I", edition: "05_0", brand: "BMW", model: "4", typekeys: [{ typekey: "11HC" }], sourceFilename: "listing.LST" });
     expect(new TextDecoder().decode(calls.bytes)).toBe("LST source fixture");
     expect(calls.key).toContain("reports/11I/05_0/");
   } finally {

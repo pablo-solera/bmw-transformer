@@ -4,6 +4,10 @@ export type ReportInput = {
   axCode: string;
   edition: string;
   manufacturer: string;
+  /** Legacy nomCamposTabla.brand; defaults to manufacturer. */
+  brand?: string;
+  /** Legacy nomCamposTabla.Model; defaults to normalized series. */
+  model?: string;
   series: string;
   family: string;
   date?: string;
@@ -12,7 +16,7 @@ export type ReportInput = {
   typekeys: TypekeyInput[];
 };
 
-export type ReportStatus = "queued" | "resolving" | "importing" | "pivoting" | "parsing-dda" | "reporting" | "completed" | "failed";
+export type ReportStatus = "queued" | "resolving" | "importing" | "pivoting" | "persisting" | "parsing-dda" | "reporting" | "completed" | "failed";
 
 export type ReportState = {
   requestId: string;
