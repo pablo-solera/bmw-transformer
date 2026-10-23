@@ -5,6 +5,7 @@ import { parseLegacyJson } from "../legacy/vbjson.js";
 import { assertUnescapedSqlValue, enforceNchar } from "../legacy/sqlserver.js";
 import { vbLineInputLines, vbString } from "../legacy/vb.js";
 import { normalizeLegacySeries } from "../legacy/series.js";
+import { typekeyFamily, typekeySeries } from "./input.js";
 
 type ImportedData = { catalog: StageCatalog[]; rates: StageRate[]; sources: Record<string, { prefix?: string; typekey: string; baseType: string; date?: string; completed: boolean }>; selectedTypekeys: string[] };
 
@@ -13,7 +14,7 @@ const safeSql = (value: string, field: string) => { assertUnescapedSqlValue(valu
 let legacyCatalogPathsState = "";
 
 async function resolvePrefix(input: ReportInput, item: TypekeyInput): Promise<{ prefix?: string; dateRoot?: string; date?: string; completed: boolean }> {
-  const root = objectKey(input.group ?? "BMW", input.manufacturer, "labour", normalizeLegacySeries(input.series), input.family);
+  const root = objectKey(input.group ?? "BMW", input.manufacturer, "labour", normalizeLegacySeries(typekeySeries(input, item)), typekeyFamily(input, item));
   const prefix = `${root}/`;
   const keys = await listKeys(prefix);
   const markerSuffix = `/${item.typekey}/${item.typekey}_completed.json`;

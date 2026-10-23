@@ -1,3 +1,4 @@
+import { requestSeries } from "./input.js";
 import type { DdaRecord, ReportInput, StageCatalog, StageRate } from "../types.js";
 import { enforceNchar, sqlEquals, sqlLike, sqlSort as sqlSortLegacy } from "../legacy/sqlserver.js";
 import { vbExcelCell, vbInStr, vbMid, vbTrim } from "../legacy/vb.js";
@@ -105,7 +106,7 @@ export function buildLegacyPivot(input: ReportInput, catalog: StageCatalog[], ra
   const typekeys = [...completedTypekeys];
   const tableName = `${input.axCode}_${input.edition}`;
   if (tableName.length > 12) throw new Error(`Legacy SQL fatal: nomCamposTabla.NomTable truncation (nchar(12)): ${tableName}`);
-  const model = normalizeLegacySeries(input.series);
+  const model = normalizeLegacySeries(requestSeries(input));
   if (model.length > 10) throw new Error(`Legacy SQL fatal: nomCamposTabla.Model truncation (nchar(10)): ${model}`);
   const nomCampos = typekeys.map((typekey, index) => ({ nomCampo: enforceNchar(typekey, 10, "nomCamposTabla.nomCampo").trimEnd(), orden: index + 1 }));
   const selectedSet = new Set(typekeys.map(typekey => typekey.toLocaleLowerCase("en-US")));

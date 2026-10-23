@@ -1,4 +1,5 @@
 import sql from "mssql";
+import { requestSeries } from "../pipeline/input.js";
 import type { PivotResult, PivotRow, PivotTypekeyColumn } from "../pipeline/pivot.js";
 import type { ReportInput } from "../types.js";
 import { normalizeLegacySeries } from "../legacy/series.js";
@@ -99,7 +100,7 @@ export function toLegacyTableRows(pivot: PivotResult): LabourTableRow[] {
 export function toNomCamposRows(input: ReportInput, pivot: PivotResult): NomCamposRow[] {
   validateLegacyTableIdentity(pivot.tableName, pivot.columns);
   const brand = (input.brand ?? input.manufacturer).trim();
-  const model = (input.model ?? normalizeLegacySeries(input.series)).trim();
+  const model = (input.model ?? normalizeLegacySeries(requestSeries(input))).trim();
   if (brand.length > 10) throw new Error("Legacy SQL fatal: nomCamposTabla.brand truncation (nchar(10))");
   if (model.length > 10) throw new Error("Legacy SQL fatal: nomCamposTabla.Model truncation (nchar(10))");
   return pivot.columns.map(column => ({

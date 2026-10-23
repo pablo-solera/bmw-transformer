@@ -1,4 +1,5 @@
-export type TypekeyInput = { typekey: string; baseType?: string };
+/** `series` and `family` override the request-level values so one load can mix development codes. */
+export type TypekeyInput = { typekey: string; baseType?: string; series?: string; family?: string };
 
 export type ReportInput = {
   axCode: string;
@@ -8,8 +9,9 @@ export type ReportInput = {
   brand?: string;
   /** Legacy nomCamposTabla.Model; defaults to normalized series. */
   model?: string;
-  series: string;
-  family: string;
+  /** Fallback series/family for typekeys that do not carry their own. */
+  series?: string;
+  family?: string;
   date?: string;
   group?: string;
   sourceFilename?: string;
@@ -18,8 +20,14 @@ export type ReportInput = {
 
 export type ReportStatus = "queued" | "resolving" | "importing" | "pivoting" | "persisting" | "parsing-dda" | "reporting" | "completed" | "failed";
 
+export type JobKind = "report" | "load";
+
 export type ReportState = {
   requestId: string;
+  /** `load` jobs only fill BMW_Labour; `report` jobs compare an LST (optionally against a finished `loadId`). */
+  kind?: JobKind;
+  loadId?: string;
+  pivotKey?: string;
   status: ReportStatus;
   stage: string;
   progress: number;

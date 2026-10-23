@@ -1,33 +1,15 @@
 import { parseMasterListingBytes, toDdaRecords } from "../dda/parse-lst.js";
-import { importExtractedData } from "./import-data.js";
-import { buildLegacyPivot, legacyExcelRows } from "./pivot.js";
+import { legacyExcelRows, type PivotResult } from "./pivot.js";
 import { buildLegacyWorkbook } from "../report/workbook.js";
-import { getBytes, objectKey, putBytes, putJson } from "../storage.js";
-import type { ReportInput } from "../types.js";
-import type { ReportState } from "../types.js";
-import { config } from "../config.js";
-import { persistLegacyPivot } from "../sql/persist-pivot.js";
+import { getBytes, getJson, objectKey, putBytes, putJson } from "../storage.js";
+import type { ReportInput, ReportState } from "../types.js";
+import { loadPivot, pivotDocument, type StateUpdate } from "./run-load.js";
 
-export async function runReportJob(requestId: string, state: ReportState, update: (patch: Partial<ReportState>) => Promise<void>) {
-  const input = state.input;
-  const sourceKey = objectKey(input.group ?? "BMW", input.manufacturer, "reports", input.axCode, input.edition, requestId, "source.lst");
+const XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+async function writeReport(input: ReportInput, requestId: string, pivot: PivotResult, source: Uint8Array, update: StateUpdate) {
   const reportPrefix = objectKey(input.group ?? "BMW", input.manufacturer, "reports", input.axCode, input.edition, requestId);
-  const source = await getBytes(sourceKey);
   const listing = parseMasterListingBytes(source, input.sourceFilename ?? "source.lst");
-
-  await update({ status: "resolving", stage: "Resolviendo typekeys completados en S3", progress: 5 });
-  const imported = await importExtractedData(input, async (progress, stage) => update({ status: "importing", stage, progress: 10 + progress }));
-  await update({ status: "pivoting", stage: "Generando pivote legacy", progress: 35 });
-  const pivot = buildLegacyPivot(input, imported.catalog, imported.rates, imported.selectedTypekeys);
-  let sqlPersistence: Record<string, unknown>;
-  if (config.sqlEnabled) {
-    await update({ status: "persisting", stage: `Persistiendo ${pivot.tableName} en BMW_Labour`, progress: 45 });
-    sqlPersistence = await persistLegacyPivot(input, pivot, async (percent, stage) => {
-      await update({ status: "persisting", stage, progress: 45 + Math.floor(percent * 0.15) });
-    });
-  } else {
-    sqlPersistence = { enabled: false, persisted: false, tableName: pivot.tableName, rows: 0, columns: pivot.columns.length };
-  }
   await update({ status: "parsing-dda", stage: "Leyendo bloque Q del LST", progress: 60 });
   const dda = toDdaRecords(listing);
   const outputRows = legacyExcelRows(dda, pivot);
@@ -35,11 +17,23 @@ export async function runReportJob(requestId: string, state: ReportState, update
   const workbook = await buildLegacyWorkbook(outputRows, pivot);
   const filename = `${input.axCode}_${input.edition.replace(/\//g, "_")}_DDA_contra_BMW.xlsx`;
   const reportKey = `${reportPrefix}/${filename}`;
-  await putBytes(reportKey, workbook, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  await putJson(`${reportPrefix}/pivot.json`, { tableName: pivot.tableName, typekeys: pivot.typekeys, columns: pivot.columns, rowCount: pivot.rows.length, rows: pivot.rows });
+  await putBytes(reportKey, workbook, XLSX);
+  return { reportPrefix, reportKey, listing, dda, outputRows };
+}
+
+/** Legacy all-in-one job: load into BMW_Labour and compare against the uploaded .LST in one go. */
+export async function runReportJob(requestId: string, state: ReportState, update: StateUpdate) {
+  const input = state.input;
+  const sourceKey = objectKey(input.group ?? "BMW", input.manufacturer, "reports", input.axCode, input.edition, requestId, "source.lst");
+  const source = await getBytes(sourceKey);
+  parseMasterListingBytes(source, input.sourceFilename ?? "source.lst");
+
+  const { imported, pivot, sqlPersistence } = await loadPivot(input, update);
+  const { reportPrefix, reportKey, listing, dda, outputRows } = await writeReport(input, requestId, pivot, source, update);
+  await putJson(`${reportPrefix}/pivot.json`, pivotDocument(pivot));
   const summary = {
     source: { filename: listing.header.sourceFile, header: listing.header, qRows: listing.blocks.Q.length },
-    input: input as ReportInput,
+    input,
     typekeys: imported.sources,
     selectedTypekeys: imported.selectedTypekeys,
     staging: { catalogRows: imported.catalog.length, flatrateRows: imported.rates.length },
@@ -47,6 +41,29 @@ export async function runReportJob(requestId: string, state: ReportState, update
     sql: sqlPersistence,
     dda: { qRows: dda.length, eligibleOperations: outputRows.length },
     ignoredSqlErrors: pivot.ignoredSqlErrors,
+    reportKey,
+  };
+  await putJson(`${reportPrefix}/summary.json`, summary);
+  await update({ status: "completed", stage: "Reporte completado", progress: 100, reportKey, summary });
+  return { reportKey, summary };
+}
+
+type PivotDocument = Omit<PivotResult, "ignoredSqlErrors"> & { ignoredSqlErrors?: string[] };
+
+/** Compares an uploaded .LST against the pivot of a finished load; nothing is read from S3 extractions or written to SQL. */
+export async function runCompareJob(requestId: string, state: ReportState, load: ReportState, update: StateUpdate) {
+  const input = state.input;
+  if (!load.pivotKey) throw new Error(`La carga ${load.requestId} no tiene pivote disponible`);
+  const sourceKey = objectKey(input.group ?? "BMW", input.manufacturer, "reports", input.axCode, input.edition, requestId, "source.lst");
+  const [source, document] = await Promise.all([getBytes(sourceKey), getJson<PivotDocument>(load.pivotKey)]);
+  const pivot: PivotResult = { ...document, ignoredSqlErrors: document.ignoredSqlErrors ?? [] };
+  const { reportPrefix, reportKey, listing, dda, outputRows } = await writeReport(input, requestId, pivot, source, update);
+  const summary = {
+    source: { filename: listing.header.sourceFile, header: listing.header, qRows: listing.blocks.Q.length },
+    input,
+    loadId: load.requestId,
+    pivot: { tableName: pivot.tableName, rows: pivot.rows.length, columns: pivot.typekeys.length },
+    dda: { qRows: dda.length, eligibleOperations: outputRows.length },
     reportKey,
   };
   await putJson(`${reportPrefix}/summary.json`, summary);
