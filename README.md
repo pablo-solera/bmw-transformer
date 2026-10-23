@@ -39,6 +39,14 @@ $env:BMW_DDA_REFERENCE_XLSX="C:\Users\Pablo.Avila\OneDrive - Solera Holdings, In
 bun test
 ```
 
+## Carga y comparación por separado
+
+La carga a `BMW_Labour` no necesita el `.LST`, así que puede lanzarse en cuanto una extracción termina:
+
+1. `POST /loads` (JSON, mismos campos que `metadata`) lee los typekeys completados de S3, genera el pivote, escribe `[dbo].[AxCode_Edicion]` y `nomCamposTabla`, y guarda `pivot.json` en `{group}/{manufacturer}/loads/{axCode}/{edition}/{loadId}/`. Cada typekey puede llevar su propia `series` y `family`. Una carga idéntica (mismos typekeys, series, familias y fecha) que siga en cola o en curso se reutiliza y responde 200 con `reused: true`.
+2. `GET /loads/{loadId}` devuelve el estado; al completarse incluye `pivotKey` y `summary`.
+3. `POST /reports` con `metadata` = `{"loadId":"<uuid>"}` y el `.LST` solo compara contra el pivote de esa carga y genera el Excel (404 si la carga no existe, 409 si no está completada). Con los metadatos completos se mantiene el trabajo único de carga y comparación.
+
 ## API
 
 `POST /reports` requiere `multipart/form-data`:

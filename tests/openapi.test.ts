@@ -4,7 +4,7 @@ import { app } from "../src/app.js";
 
 test("OpenAPI documents report status, download and source endpoints", () => {
   expect(Object.keys(openApiDocument.paths)).toEqual([
-    "/health", "/openapi.json", "/docs", "/reports", "/reports/{requestId}", "/reports/{requestId}/download", "/reports/{requestId}/source",
+    "/health", "/openapi.json", "/docs", "/loads", "/loads/{requestId}", "/reports", "/reports/{requestId}", "/reports/{requestId}/download", "/reports/{requestId}/source",
   ]);
 });
 
@@ -27,7 +27,7 @@ test("every OpenAPI path parameter is declared and every documented path has a h
   const paths = Object.keys(openApiDocument.paths);
   const parameterized = paths.filter(path => path.includes("{requestId}"));
   expect(parameterized).toEqual([
-    "/reports/{requestId}", "/reports/{requestId}/download", "/reports/{requestId}/source",
+    "/loads/{requestId}", "/reports/{requestId}", "/reports/{requestId}/download", "/reports/{requestId}/source",
   ]);
   for (const path of parameterized) {
     const methods = Object.values(openApiDocument.paths[path as keyof typeof openApiDocument.paths]);

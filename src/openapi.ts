@@ -30,11 +30,33 @@ export const openApiDocument = {
     },
     "/openapi.json": { get: { operationId: "getOpenApi", responses: { "200": { description: "Documento OpenAPI 3.0.3" } } } },
     "/docs": { get: { operationId: "getDocs", responses: { "200": { description: "Interfaz Swagger UI" } } } },
+    "/loads": {
+      post: {
+        operationId: "createLoad",
+        summary: "Encola la carga de una extracción en BMW_Labour",
+        description: "Lee los typekeys completados de S3, genera el pivote y escribe la tabla `[AxCode]_[Edicion]` y sus filas de `nomCamposTabla`, sin necesitar el `.LST`. Cada typekey puede llevar su propia serie y familia. Si ya hay una carga idéntica en cola o en curso para el mismo AX y edición, se reutiliza (200 con `reused: true`).",
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ReportMetadata" } } } },
+        responses: {
+          "200": { description: "Ya existía una carga idéntica en curso", content: { "application/json": { schema: { $ref: "#/components/schemas/EnqueuedLoad" } } } },
+          "202": { description: "Carga encolada; consulta statusUrl", content: { "application/json": { schema: { $ref: "#/components/schemas/EnqueuedLoad" } } } },
+          "400": errorResponse, "500": errorResponse,
+        },
+      },
+    },
+    "/loads/{requestId}": {
+      get: {
+        operationId: "getLoadStatus", summary: "Consulta el estado de una carga", parameters: [requestIdParameter],
+        responses: {
+          "200": { description: "Estado de la carga; al completarse incluye `pivotKey` y `summary`", content: { "application/json": { schema: { $ref: "#/components/schemas/ReportState" } } } },
+          "404": errorResponse, "500": errorResponse,
+        },
+      },
+    },
     "/reports": {
       post: {
         operationId: "createReport",
         summary: "Encola un reporte BMW DDA",
-        description: "Sube el listado maestro `.LST` (o ZIP con un único `.LST`) y los metadatos como JSON serializado en el campo `metadata`.",
+        description: "Sube el listado maestro `.LST` (o ZIP con un único `.LST`) y los metadatos como JSON serializado en el campo `metadata`. Con `{\"loadId\":\"<uuid>\"}` solo compara contra el pivote de una carga ya completada (404 si no existe, 409 si no está completada); con los metadatos completos hace carga y comparación en un solo trabajo.",
         requestBody: {
           required: true,
           content: {
@@ -108,8 +130,18 @@ export const openApiDocument = {
         properties: { requestId: { type: "string", format: "uuid" }, status: { type: "string", enum: ["queued"] }, statusUrl: { type: "string", example: "/reports/09f62888-079a-4797-b028-8d5d002ce3f3" } },
         required: ["requestId", "status", "statusUrl"],
       },
+      EnqueuedLoad: {
+        type: "object",
+        properties: { loadId: { type: "string", format: "uuid" }, requestId: { type: "string", format: "uuid" }, status: { type: "string", enum: ["queued"] }, reused: { type: "boolean" }, statusUrl: { type: "string", example: "/loads/09f62888-079a-4797-b028-8d5d002ce3f3" } },
+        required: ["loadId", "requestId", "status", "reused", "statusUrl"],
+      },
       TypekeyInput: {
-        type: "object", properties: { typekey: { type: "string", pattern: "^[A-Z0-9]{4}$", example: "11HC" }, baseType: { type: "string", maxLength: 10, description: "Opcional; por defecto el typekey" } }, required: ["typekey"],
+        type: "object",
+        properties: {
+          typekey: { type: "string", pattern: "^[A-Z0-9]{4}$", example: "11HC" }, baseType: { type: "string", maxLength: 10, description: "Opcional; por defecto el typekey" },
+          series: { type: "string", maxLength: 10, description: "Opcional; sustituye a la serie de la petición" }, family: { type: "string", maxLength: 10, description: "Opcional; sustituye a la familia de la petición" },
+        },
+        required: ["typekey"],
       },
       ReportMetadata: {
         type: "object",
@@ -120,13 +152,15 @@ export const openApiDocument = {
           family: { type: "string", maxLength: 10, example: "G26" }, date: { type: "string", pattern: "^\\d{8}$", example: "20260928" },
           group: { type: "string", default: "BMW" }, typekeys: { type: "array", minItems: 1, items: { $ref: "#/components/schemas/TypekeyInput" } },
         },
-        required: ["axCode", "edition", "series", "family", "typekeys"],
+        description: "Cada typekey necesita serie y familia, propias o heredadas de `series` y `family`.",
+        required: ["axCode", "edition", "typekeys"],
       },
       ReportState: {
         type: "object",
         properties: {
           requestId: { type: "string", format: "uuid" }, status: { type: "string", enum: ["queued", "resolving", "importing", "pivoting", "persisting", "parsing-dda", "reporting", "completed", "failed"] },
           stage: { type: "string" }, progress: { type: "integer", minimum: 0, maximum: 100 }, input: { $ref: "#/components/schemas/ReportMetadata" },
+          kind: { type: "string", enum: ["report", "load"] }, loadId: { type: "string", format: "uuid", description: "Carga contra la que se compara el reporte" }, pivotKey: { type: "string", description: "Clave S3 del pivote de una carga completada" },
           reportKey: { type: "string" }, summary: { type: "object", additionalProperties: true }, error: { type: "string" },
           createdAt: { type: "string", format: "date-time" }, updatedAt: { type: "string", format: "date-time" },
         },

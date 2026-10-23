@@ -3,7 +3,9 @@ import { randomUUID } from "node:crypto";
 import { config } from "./config.js";
 import { redis } from "./redis.js";
 import type { ReportInput, ReportState } from "./types.js";
-import { runReportJob } from "./pipeline/run-report.js";
+import { runCompareJob, runReportJob } from "./pipeline/run-report.js";
+import { runLoadJob } from "./pipeline/run-load.js";
+import { loadFingerprint } from "./load-fingerprint.js";
 import { deleteObject, objectKey } from "./storage.js";
 
 const queueOptions = { connection: redis };
@@ -20,12 +22,38 @@ async function saveState(state: ReportState) {
   await redis.set(stateKey(state.requestId), JSON.stringify(state), "EX", config.STATE_TTL_SECONDS);
 }
 
-export async function enqueueReport(input: ReportInput, requestId = randomUUID()): Promise<string> {
+export async function enqueueReport(input: ReportInput, requestId = randomUUID(), loadId?: string): Promise<string> {
   const now = new Date().toISOString();
-  const state: ReportState = { requestId, status: "queued", stage: "En cola", progress: 0, input, createdAt: now, updatedAt: now };
+  const state: ReportState = { requestId, kind: "report", ...(loadId ? { loadId } : {}), status: "queued", stage: "En cola", progress: 0, input, createdAt: now, updatedAt: now };
   await saveState(state);
-  await reportQueue.add("transform", { requestId }, { jobId: requestId, attempts: 1, removeOnComplete: 100, removeOnFail: 100 });
+  await reportQueue.add(loadId ? "compare" : "transform", { requestId }, { jobId: requestId, attempts: 1, removeOnComplete: 100, removeOnFail: 100 });
   return requestId;
+}
+
+const activeLoadKey = (input: ReportInput) => `bmw-transformer:load-active:${input.group ?? "BMW"}:${input.manufacturer}:${input.axCode}:${input.edition}`;
+const isActive = (state: ReportState | null) => Boolean(state) && state!.status !== "completed" && state!.status !== "failed";
+
+/** Queues a load into BMW_Labour. An identical load that is still queued or running is reused instead of duplicated. */
+export async function enqueueLoad(input: ReportInput, loadId = randomUUID()): Promise<{ loadId: string; reused: boolean }> {
+  const fingerprint = loadFingerprint(input);
+  const active = await redis.get(activeLoadKey(input));
+  if (active) {
+    const current = JSON.parse(active) as { loadId: string; fingerprint: string };
+    if (current.fingerprint === fingerprint && isActive(await getReportState(current.loadId))) return { loadId: current.loadId, reused: true };
+  }
+  const now = new Date().toISOString();
+  const state: ReportState = { requestId: loadId, kind: "load", status: "queued", stage: "En cola", progress: 0, input, createdAt: now, updatedAt: now };
+  await saveState(state);
+  await redis.set(activeLoadKey(input), JSON.stringify({ loadId, fingerprint }), "EX", config.STATE_TTL_SECONDS);
+  try { await reportQueue.add("load", { requestId: loadId }, { jobId: loadId, attempts: 1, removeOnComplete: 100, removeOnFail: 100 }); }
+  catch (error) { await redis.del(stateKey(loadId), activeLoadKey(input)); throw error; }
+  return { loadId, reused: false };
+}
+
+async function releaseActiveLoad(state: ReportState) {
+  const key = activeLoadKey(state.input);
+  const current = await redis.get(key);
+  if (current && (JSON.parse(current) as { loadId: string }).loadId === state.requestId) await redis.del(key);
 }
 
 export async function rollbackQueuedReport(requestId: string, input: ReportInput) {
@@ -43,12 +71,19 @@ export function createReportWorker() {
       if (current) await saveState({ ...current, ...patch });
     };
     try {
-      await runReportJob(state.requestId, state, update);
+      if (state.kind === "load") await runLoadJob(state.requestId, state, update);
+      else if (state.loadId) {
+        const load = await getReportState(state.loadId);
+        if (!load || load.kind !== "load" || load.status !== "completed") throw new Error(`La carga ${state.loadId} no está completada`);
+        await runCompareJob(state.requestId, state, load, update);
+      } else await runReportJob(state.requestId, state, update);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      await update({ status: "failed", stage: "Fallo en pipeline legacy", error: message });
-      console.error(JSON.stringify({ event: "report_failed", requestId: state.requestId, error: message }));
+      await update({ status: "failed", stage: state.kind === "load" ? "Fallo en la carga" : "Fallo en pipeline legacy", error: message });
+      console.error(JSON.stringify({ event: state.kind === "load" ? "load_failed" : "report_failed", requestId: state.requestId, error: message }));
       throw error;
+    } finally {
+      if (state.kind === "load") await releaseActiveLoad(state).catch(() => undefined);
     }
   }, { ...queueOptions, concurrency: 1 });
   worker.on("completed", job => console.info(JSON.stringify({ event: "report_completed", requestId: job.data.requestId })));
