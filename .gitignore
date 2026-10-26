@@ -5,3 +5,5 @@ dist/
 *.log
 tmp/
 coverage/
+.env.*
+!.env.example
