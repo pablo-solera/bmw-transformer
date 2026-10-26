@@ -8,9 +8,10 @@ import type { ReportInput, ReportState } from "../types.js";
 export type StateUpdate = (patch: Partial<ReportState>) => Promise<void>;
 
 /** Reads the extracted data from S3, builds the legacy pivot and persists it into BMW_Labour when SQL is enabled. */
-export async function loadPivot(input: ReportInput, update: StateUpdate) {
+export async function loadPivot(input: ReportInput, update: StateUpdate, options: { requireCompleted?: boolean } = {}) {
   await update({ status: "resolving", stage: "Resolviendo typekeys completados en S3", progress: 5 });
   const imported = await importExtractedData(input, async (progress, stage) => update({ status: "importing", stage, progress: 10 + progress }));
+  if (options.requireCompleted && imported.selectedTypekeys.length === 0) throw new Error("Ningún typekey de la carga tiene su marcador completed en S3");
   await update({ status: "pivoting", stage: "Generando pivote legacy", progress: 35 });
   const pivot = buildLegacyPivot(input, imported.catalog, imported.rates, imported.selectedTypekeys);
   let sqlPersistence: Record<string, unknown>;
@@ -34,8 +35,7 @@ export function loadPrefix(input: ReportInput, loadId: string) {
 /** Loads a request into BMW_Labour without any .LST; the pivot is kept in S3 so later comparisons do not need to re-read the extraction. */
 export async function runLoadJob(loadId: string, state: ReportState, update: StateUpdate) {
   const input = state.input;
-  const { imported, pivot, sqlPersistence } = await loadPivot(input, update);
-  if (imported.selectedTypekeys.length === 0) throw new Error("Ningún typekey de la carga tiene su marcador completed en S3");
+  const { imported, pivot, sqlPersistence } = await loadPivot(input, update, { requireCompleted: true });
   const prefix = loadPrefix(input, loadId);
   const pivotKey = `${prefix}/pivot.json`;
   await putJson(pivotKey, pivotDocument(pivot));
