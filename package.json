@@ -10,7 +10,8 @@
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
     "worker": "bun src/worker.ts",
-    "test": "bun test",
+    "test": "bun test --path-ignore-patterns \"tests/flow/**\" --path-ignore-patterns \"tests/e2e/**\" && bun run test:flow",
+    "test:flow": "bun test tests/flow",
     "test:sql": "bun run scripts/run-sql-integration-tests.ts",
     "check:sql": "bun run scripts/check-sql-connectivity.ts",
     "typecheck": "tsc --noEmit"
