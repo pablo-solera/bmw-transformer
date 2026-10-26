@@ -39,6 +39,22 @@ $env:BMW_DDA_REFERENCE_XLSX="C:\Users\Pablo.Avila\OneDrive - Solera Holdings, In
 bun test
 ```
 
+## Pruebas
+
+| Comando | Qué ejecuta | Necesita |
+|---|---|---|
+| `bun test` | Pruebas unitarias y de API (reglas legacy, parser del `.LST`, pivote, Excel, rutas HTTP con dependencias simuladas). | Nada |
+| `bun run test:flow` | El flujo completo carga → pivote → comparación → Excel contra un almacenamiento en memoria, comparado con los resultados de referencia de `tests/fixtures/e2e/`. Corre en su propio proceso para no compartir mocks con el resto. | Nada |
+| `bun run test` | Las dos anteriores seguidas. | Nada |
+| `bun run test:sql` | Crear, reemplazar y revertir la tabla en un SQL Server desechable. | Docker |
+| `bun run test:e2e` | El flujo real por HTTP: API, worker BullMQ, Redis, S3 (RustFS) y SQL Server desechables. Comprueba la tabla creada y sus columnas, `nomCamposTabla`, `pivot.json`, el Excel descargado por la URL firmada, la reutilización de cargas idénticas, el reemplazo de tablas y los fallos. | Docker |
+
+`test:e2e` levanta `docker-compose.e2e.yml` (puertos 21433, 26379 y 29000, contraseña aleatoria) y borra del entorno cualquier variable `SQL_*`, `S3_*`, `REDIS_*` o `BMW_*`: **no usa el SQL corporativo, el Redis compartido ni el S3 real** aunque tengas un `.env`. Al terminar elimina contenedores y volúmenes.
+
+Los datos de prueba son sintéticos (`tests/support/synthetic-extraction.ts`): una extracción con la misma estructura que escribe el reader, con dos typekeys de familias distintas, uno sin marcador `completed` y un `.LST` con un caso por cada regla de comparación. Si cambias a propósito una regla legacy, regenera las referencias con `UPDATE_GOLDEN=1 bun run test:flow` y revisa el diff de `tests/fixtures/e2e/` antes de commitear.
+
+`bunfig.toml` excluye `tests/flow` y `tests/e2e` del `bun test` simple; esos directorios se ejecutan con `bunfig.flow.toml`.
+
 ## Carga y comparación por separado
 
 La carga a `BMW_Labour` no necesita el `.LST`, así que puede lanzarse en cuanto una extracción termina:
