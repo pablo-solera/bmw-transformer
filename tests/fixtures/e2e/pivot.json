@@ -1,0 +1,111 @@
+{
+  "tableName": "1XF_05/0",
+  "typekeys": [
+    "1A01",
+    "2B02"
+  ],
+  "columns": [
+    {
+      "typekey": "1A01",
+      "columnName": "type_1A01",
+      "order": 1
+    },
+    {
+      "typekey": "2B02",
+      "columnName": "type_2B02",
+      "order": 2
+    }
+  ],
+  "rowCount": 4,
+  "ignoredSqlErrors": [],
+  "rows": [
+    {
+      "typekeyCatalog_id": "G1",
+      "typekeyCatalog_number": "11",
+      "typekeyCatalog_text": "Motor",
+      "typekeyCatalog_entriesId": "E_01",
+      "typekeyCatalog_entriesNumber": "01",
+      "typekeyCatalog_entriesText": "Culata",
+      "typekeyIdEntriesId_catalogPaths": "Motor/Culata_01",
+      "typekeyIdEntriesId_rubrikText": "Culata",
+      "typekeyIdEntriesId_text": "Desmontar culata",
+      "typekeyIdEntriesId_flatrates_awSheetOID": "AW001",
+      "typekeyIdEntriesId_flatrates_number": "3310514",
+      "typekeyIdEntriesId_flatrates_text": "Cambiar culata",
+      "typekeyIdEntriesId_flatrates_workType": "R",
+      "typekeyIdEntriesId_flatrates_klammerText": "",
+      "orderNumber": "A1",
+      "values": {
+        "1A01": "12",
+        "2B02": "14"
+      },
+      "insertionOrder": 0
+    },
+    {
+      "typekeyCatalog_id": "G1",
+      "typekeyCatalog_number": "11",
+      "typekeyCatalog_text": "Motor",
+      "typekeyCatalog_entriesId": "E_01",
+      "typekeyCatalog_entriesNumber": "01",
+      "typekeyCatalog_entriesText": "Culata",
+      "typekeyIdEntriesId_catalogPaths": "Motor/Culata_01",
+      "typekeyIdEntriesId_rubrikText": "Culata",
+      "typekeyIdEntriesId_text": "Desmontar culata",
+      "typekeyIdEntriesId_flatrates_awSheetOID": "AW002",
+      "typekeyIdEntriesId_flatrates_number": "3310515",
+      "typekeyIdEntriesId_flatrates_text": "Revisar culata",
+      "typekeyIdEntriesId_flatrates_workType": "R",
+      "typekeyIdEntriesId_flatrates_klammerText": "",
+      "orderNumber": "A1",
+      "values": {
+        "1A01": "3",
+        "2B02": "3"
+      },
+      "insertionOrder": 1
+    },
+    {
+      "typekeyCatalog_id": "G1",
+      "typekeyCatalog_number": "11",
+      "typekeyCatalog_text": "Motor",
+      "typekeyCatalog_entriesId": "E_02",
+      "typekeyCatalog_entriesNumber": "02",
+      "typekeyCatalog_entriesText": "Junta",
+      "typekeyIdEntriesId_catalogPaths": "Motor/Junta_02",
+      "typekeyIdEntriesId_rubrikText": "Junta",
+      "typekeyIdEntriesId_text": "Cambiar junta",
+      "typekeyIdEntriesId_flatrates_awSheetOID": "AW003",
+      "typekeyIdEntriesId_flatrates_number": "3320100",
+      "typekeyIdEntriesId_flatrates_text": "Cambiar junta",
+      "typekeyIdEntriesId_flatrates_workType": "S S01A",
+      "typekeyIdEntriesId_flatrates_klammerText": "",
+      "orderNumber": "A1",
+      "values": {
+        "1A01": "5",
+        "2B02": "5"
+      },
+      "insertionOrder": 2
+    },
+    {
+      "typekeyCatalog_id": "G2",
+      "typekeyCatalog_number": "12",
+      "typekeyCatalog_text": "Transmision",
+      "typekeyCatalog_entriesId": "E_03",
+      "typekeyCatalog_entriesNumber": "03",
+      "typekeyCatalog_entriesText": "Caja",
+      "typekeyIdEntriesId_catalogPaths": "Transmision/Caja_03",
+      "typekeyIdEntriesId_rubrikText": "Caja",
+      "typekeyIdEntriesId_text": "Revisar caja",
+      "typekeyIdEntriesId_flatrates_awSheetOID": "AW004",
+      "typekeyIdEntriesId_flatrates_number": "4112190",
+      "typekeyIdEntriesId_flatrates_text": "Revisar caja",
+      "typekeyIdEntriesId_flatrates_workType": "R",
+      "typekeyIdEntriesId_flatrates_klammerText": "",
+      "orderNumber": "A1",
+      "values": {
+        "1A01": "20",
+        "2B02": null
+      },
+      "insertionOrder": 3
+    }
+  ]
+}

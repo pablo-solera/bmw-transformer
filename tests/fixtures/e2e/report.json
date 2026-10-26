@@ -1,0 +1,73 @@
+{
+  "sheetName": "DDA contra BMW",
+  "header": [
+    "Nº Operacion",
+    "DDA",
+    "",
+    "1A01",
+    "2B02"
+  ],
+  "rows": [
+    {
+      "values": [
+        "33 10 514",
+        12,
+        null,
+        12,
+        14
+      ],
+      "red": [
+        5
+      ]
+    },
+    {
+      "values": [
+        "33 10 515",
+        4,
+        null,
+        3,
+        3
+      ],
+      "red": [
+        4,
+        5
+      ]
+    },
+    {
+      "values": [
+        "33 20 100ZAX",
+        5,
+        null,
+        5,
+        5
+      ],
+      "red": [
+        4,
+        5
+      ]
+    },
+    {
+      "values": [
+        "41 12 190)",
+        25,
+        null,
+        20,
+        null
+      ],
+      "red": [
+        4,
+        5
+      ]
+    },
+    {
+      "values": [
+        "99 99 999",
+        7,
+        null,
+        null,
+        null
+      ],
+      "red": []
+    }
+  ]
+}
