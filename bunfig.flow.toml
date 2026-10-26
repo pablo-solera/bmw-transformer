@@ -1,0 +1,2 @@
+# Used by test:flow and test:e2e: the default bunfig.toml ignores those directories so a plain `bun test` stays fast and free of cross-file mocks.
+[test]
