@@ -1,4 +1,4 @@
-import { Queue, Worker, type Job } from "bullmq";
+import { Queue, UnrecoverableError, Worker, type Job } from "bullmq";
 import { randomUUID } from "node:crypto";
 import { config } from "./config.js";
 import { redis } from "./redis.js";
@@ -7,9 +7,11 @@ import { runCompareJob, runReportJob } from "./pipeline/run-report.js";
 import { runLoadJob } from "./pipeline/run-load.js";
 import { loadFingerprint } from "./load-fingerprint.js";
 import { deleteObject, objectKey } from "./storage.js";
+import { JOB_ATTEMPTS, JOB_BACKOFF_MS, isTransientNetworkError, shouldRetry } from "./retry.js";
 
 const queueOptions = { connection: redis };
 export const reportQueue = new Queue("bmw-transformer-reports", queueOptions);
+const jobOptions = { attempts: JOB_ATTEMPTS, backoff: { type: "exponential", delay: JOB_BACKOFF_MS }, removeOnComplete: 100, removeOnFail: 100 };
 const stateKey = (requestId: string) => `bmw-transformer:report:${requestId}`;
 
 export async function getReportState(requestId: string): Promise<ReportState | null> {
@@ -26,7 +28,7 @@ export async function enqueueReport(input: ReportInput, requestId = randomUUID()
   const now = new Date().toISOString();
   const state: ReportState = { requestId, kind: "report", ...(loadId ? { loadId } : {}), status: "queued", stage: "En cola", progress: 0, input, createdAt: now, updatedAt: now };
   await saveState(state);
-  await reportQueue.add(loadId ? "compare" : "transform", { requestId }, { jobId: requestId, attempts: 1, removeOnComplete: 100, removeOnFail: 100 });
+  await reportQueue.add(loadId ? "compare" : "transform", { requestId }, { jobId: requestId, ...jobOptions });
   return requestId;
 }
 
@@ -45,7 +47,7 @@ export async function enqueueLoad(input: ReportInput, loadId = randomUUID()): Pr
   const state: ReportState = { requestId: loadId, kind: "load", status: "queued", stage: "En cola", progress: 0, input, createdAt: now, updatedAt: now };
   await saveState(state);
   await redis.set(activeLoadKey(input), JSON.stringify({ loadId, fingerprint }), "EX", config.STATE_TTL_SECONDS);
-  try { await reportQueue.add("load", { requestId: loadId }, { jobId: loadId, attempts: 1, removeOnComplete: 100, removeOnFail: 100 }); }
+  try { await reportQueue.add("load", { requestId: loadId }, { jobId: loadId, ...jobOptions }); }
   catch (error) { await redis.del(stateKey(loadId), activeLoadKey(input)); throw error; }
   return { loadId, reused: false };
 }
@@ -70,6 +72,8 @@ export function createReportWorker() {
       const current = await getReportState(state.requestId);
       if (current) await saveState({ ...current, ...patch });
     };
+    const maxAttempts = job.opts.attempts ?? 1;
+    let retrying = false;
     try {
       if (state.kind === "load") await runLoadJob(state.requestId, state, update);
       else if (state.loadId) {
@@ -79,11 +83,18 @@ export function createReportWorker() {
       } else await runReportJob(state.requestId, state, update);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      const label = state.kind === "load" ? "load" : "report";
+      if (shouldRetry(error, job.attemptsMade, maxAttempts)) {
+        retrying = true;
+        await update({ status: "queued", stage: `Reintentando tras un error de red (${job.attemptsMade + 2}/${maxAttempts})`, progress: 0 });
+        console.warn(JSON.stringify({ event: `${label}_retrying`, requestId: state.requestId, attempt: job.attemptsMade + 1, error: message }));
+        throw error;
+      }
       await update({ status: "failed", stage: state.kind === "load" ? "Fallo en la carga" : "Fallo en pipeline legacy", error: message });
-      console.error(JSON.stringify({ event: state.kind === "load" ? "load_failed" : "report_failed", requestId: state.requestId, error: message }));
-      throw error;
+      console.error(JSON.stringify({ event: `${label}_failed`, requestId: state.requestId, error: message }));
+      throw isTransientNetworkError(error) ? error : new UnrecoverableError(message);
     } finally {
-      if (state.kind === "load") await releaseActiveLoad(state).catch(() => undefined);
+      if (state.kind === "load" && !retrying) await releaseActiveLoad(state).catch(() => undefined);
     }
   }, { ...queueOptions, concurrency: 1 });
   worker.on("completed", job => console.info(JSON.stringify({ event: "report_completed", requestId: job.data.requestId })));
