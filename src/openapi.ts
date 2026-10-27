@@ -28,6 +28,15 @@ export const openApiDocument = {
         },
       },
     },
+    "/ready": {
+      get: {
+        operationId: "ready",
+        responses: {
+          "200": { description: "Servicio y dependencias disponibles", content: { "application/json": { schema: { $ref: "#/components/schemas/Ready" } } } },
+          "503": { description: "Alguna dependencia no está disponible", content: { "application/json": { schema: { $ref: "#/components/schemas/Ready" } } } },
+        },
+      },
+    },
     "/openapi.json": { get: { operationId: "getOpenApi", responses: { "200": { description: "Documento OpenAPI 3.0.3" } } } },
     "/docs": { get: { operationId: "getDocs", responses: { "200": { description: "Interfaz Swagger UI" } } } },
     "/loads": {
@@ -125,6 +134,14 @@ export const openApiDocument = {
   components: {
     schemas: {
       Error: { type: "object", properties: { error: { type: "string" } }, required: ["error"] },
+      Ready: {
+        type: "object",
+        properties: {
+          status: { type: "string", enum: ["ready", "unavailable"] },
+          checks: { type: "object", additionalProperties: { type: "string", enum: ["ok", "error"] }, example: { redis: "ok", s3: "ok", sqlserver: "ok" } },
+        },
+        required: ["status", "checks"],
+      },
       EnqueuedReport: {
         type: "object",
         properties: { requestId: { type: "string", format: "uuid" }, status: { type: "string", enum: ["queued"] }, statusUrl: { type: "string", example: "/reports/09f62888-079a-4797-b028-8d5d002ce3f3" } },

@@ -4,7 +4,7 @@ import { app } from "../src/app.js";
 
 test("OpenAPI documents report status, download and source endpoints", () => {
   expect(Object.keys(openApiDocument.paths)).toEqual([
-    "/health", "/openapi.json", "/docs", "/loads", "/loads/{requestId}", "/reports", "/reports/{requestId}", "/reports/{requestId}/download", "/reports/{requestId}/source",
+    "/health", "/ready", "/openapi.json", "/docs", "/loads", "/loads/{requestId}", "/reports", "/reports/{requestId}", "/reports/{requestId}/download", "/reports/{requestId}/source",
   ]);
 });
 

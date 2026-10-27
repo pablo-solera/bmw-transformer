@@ -25,6 +25,10 @@ export async function ensureBucket() {
   }
 }
 
+export async function checkBucket() {
+  await client.send(new HeadBucketCommand({ Bucket: config.S3_BUCKET }));
+}
+
 export async function putBytes(key: string, body: Uint8Array, contentType: string) {
   await client.send(new PutObjectCommand({ Bucket: config.S3_BUCKET, Key: key, Body: body, ContentType: contentType }));
 }

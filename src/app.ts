@@ -50,7 +50,31 @@ type AppDependencies = {
   objectKey: (...parts: string[]) => string;
   putBytes: (key: string, body: Uint8Array, contentType: string) => Promise<void>;
   signedDownload: (key: string, filename: string) => Promise<string>;
+  readyChecks?: Record<string, () => Promise<void>>;
 };
+
+const READY_CHECK_TIMEOUT_MS = 2_000;
+
+const defaultReadyChecks: Record<string, () => Promise<void>> = {
+  redis: async () => { await (await import("./redis.js")).redis.ping(); },
+  s3: async () => { await (await import("./storage.js")).checkBucket(); },
+  ...(config.sqlEnabled ? { sqlserver: async () => { await (await (await import("./sql/client.js")).getSqlPool()).request().query("SELECT 1"); } } : {}),
+};
+
+async function runReadyCheck(check: () => Promise<void>): Promise<"ok" | "error"> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      check(),
+      new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error("timeout")), READY_CHECK_TIMEOUT_MS); }),
+    ]);
+    return "ok";
+  } catch {
+    return "error";
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 const defaults: AppDependencies = {
   enqueueReport: (input, requestId, loadId) => enqueueReport(input, requestId as `${string}-${string}-${string}-${string}-${string}`, loadId),
@@ -63,6 +87,12 @@ export function createApp(dependencies: AppDependencies = defaults) {
   app.disable("x-powered-by");
   app.use(express.json({ limit: "64kb" }));
   app.get("/health", (_req, res) => res.json({ status: "ok" }));
+  app.get("/ready", async (_req, res) => {
+    const entries = await Promise.all(Object.entries(dependencies.readyChecks ?? defaultReadyChecks).map(async ([name, check]) => [name, await runReadyCheck(check)] as const));
+    const checks = Object.fromEntries(entries);
+    const ready = entries.every(([, status]) => status === "ok");
+    res.status(ready ? 200 : 503).json({ status: ready ? "ready" : "unavailable", checks });
+  });
   app.get("/openapi.json", (_req, res) => res.json(openApiDocument));
   app.get("/docs", (_req, res) => res.type("html").send('<!doctype html><html><head><title>BMW Transformer API</title><link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist/swagger-ui.css"></head><body><div id="swagger-ui"></div><script src="https://unpkg.com/swagger-ui-dist/swagger-ui-bundle.js"></script><script>SwaggerUIBundle({url:"/openapi.json",dom_id:"#swagger-ui"})</script></body></html>'));
 
