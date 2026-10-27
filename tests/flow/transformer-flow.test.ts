@@ -60,11 +60,17 @@ describe("load: S3 extraction to pivot", () => {
     await expectGolden("pivot", pivot);
   });
 
-  test("skips a typekey without a completed marker instead of loading partial data", async () => {
-    const { state, result } = await load("load-2", input({ typekeys: [...synthetic.typekeys, { ...synthetic.incomplete }] }));
-    expect(state.status).toBe("completed");
-    expect(result.summary.selectedTypekeys).toEqual(["1A01", "2B02"]);
-    expect((result.summary.typekeys as Record<string, { completed: boolean }>)["3C03"]?.completed).toBe(false);
+  test("fails when a requested typekey has no completed marker, naming it, instead of loading partial data", async () => {
+    await expect(load("load-2", input({ typekeys: [...synthetic.typekeys, { ...synthetic.incomplete }] }))).rejects.toThrow("Faltan los marcadores completed en S3 de: 3C03");
+  });
+
+  test("the single-job report still skips an incomplete typekey, as before", async () => {
+    const requestId = "legacy-partial";
+    const reportInput = { ...input({ typekeys: [...synthetic.typekeys, { ...synthetic.incomplete }] }), sourceFilename: "listing.lst" };
+    await memory.module.putBytes(memory.module.objectKey("BMW", "BMW", "reports", reportInput.axCode, reportInput.edition, requestId, "source.lst"), syntheticListing());
+    let state = stateFor(requestId, reportInput, { kind: "report" });
+    await runReportJob(requestId, state, async patch => { state = { ...state, ...patch }; });
+    expect((state.summary?.selectedTypekeys as string[])).toEqual(["1A01", "2B02"]);
   });
 
   test("fails when none of the typekeys is completed", async () => {
@@ -87,6 +93,19 @@ describe("load: S3 extraction to pivot", () => {
     expect((newest.result.summary.typekeys as Record<string, { date: string }>)["1A01"]?.date).toBe("20261020");
     const pinned = await load("load-7", input({ typekeys: [synthetic.typekeys[0]], date: "20261001" }));
     expect((pinned.result.summary.typekeys as Record<string, { date: string }>)["1A01"]?.date).toBe("20261001");
+  });
+
+  test("a date on a typekey overrides the request-level date, so each typekey loads the data of its own extraction", async () => {
+    const older = syntheticExtraction().filter(item => item.parts.includes("1A01")).map(item => ({ parts: item.parts.map(part => part === synthetic.date ? "20261001" : part), body: item.body }));
+    memory.seed(older);
+    const { result } = await load("load-8", input({ typekeys: [{ ...synthetic.typekeys[0], date: "20261001" }, { ...synthetic.typekeys[1] }] }));
+    const sources = result.summary.typekeys as Record<string, { date: string }>;
+    expect(sources["1A01"]?.date).toBe("20261001");
+    expect(sources["2B02"]?.date).toBe("20261020");
+  });
+
+  test("a typekey whose requested date has no completed marker is reported as missing", async () => {
+    await expect(load("load-9", input({ typekeys: [{ ...synthetic.typekeys[0], date: "20250101" }] }))).rejects.toThrow("Ningún typekey de la carga tiene su marcador completed en S3");
   });
 });
 

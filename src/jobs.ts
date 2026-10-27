@@ -21,7 +21,9 @@ export async function getReportState(requestId: string): Promise<ReportState | n
 
 async function saveState(state: ReportState) {
   state.updatedAt = new Date().toISOString();
-  await redis.set(stateKey(state.requestId), JSON.stringify(state), "EX", config.STATE_TTL_SECONDS);
+  // Finished work keeps its state: loads and reports are still needed long after the retention window of running jobs.
+  if (state.status === "completed") await redis.set(stateKey(state.requestId), JSON.stringify(state));
+  else await redis.set(stateKey(state.requestId), JSON.stringify(state), "EX", config.STATE_TTL_SECONDS);
 }
 
 export async function enqueueReport(input: ReportInput, requestId = randomUUID(), loadId?: string): Promise<string> {
@@ -38,17 +40,23 @@ const isActive = (state: ReportState | null) => Boolean(state) && state!.status 
 /** Queues a load into BMW_Labour. An identical load that is still queued or running is reused instead of duplicated. */
 export async function enqueueLoad(input: ReportInput, loadId = randomUUID()): Promise<{ loadId: string; reused: boolean }> {
   const fingerprint = loadFingerprint(input);
-  const active = await redis.get(activeLoadKey(input));
-  if (active) {
-    const current = JSON.parse(active) as { loadId: string; fingerprint: string };
-    if (current.fingerprint === fingerprint && isActive(await getReportState(current.loadId))) return { loadId: current.loadId, reused: true };
-  }
+  const key = activeLoadKey(input);
   const now = new Date().toISOString();
   const state: ReportState = { requestId: loadId, kind: "load", status: "queued", stage: "En cola", progress: 0, input, createdAt: now, updatedAt: now };
   await saveState(state);
-  await redis.set(activeLoadKey(input), JSON.stringify({ loadId, fingerprint }), "EX", config.STATE_TTL_SECONDS);
+  const claim = JSON.stringify({ loadId, fingerprint });
+  // SET NX decides atomically which of several identical simultaneous requests owns the active slot.
+  if (!await redis.set(key, claim, "EX", config.STATE_TTL_SECONDS, "NX")) {
+    const holder = await redis.get(key);
+    const current = holder ? JSON.parse(holder) as { loadId: string; fingerprint: string } : null;
+    if (current && current.loadId !== loadId && current.fingerprint === fingerprint && isActive(await getReportState(current.loadId))) {
+      await redis.del(stateKey(loadId));
+      return { loadId: current.loadId, reused: true };
+    }
+    await redis.set(key, claim, "EX", config.STATE_TTL_SECONDS);
+  }
   try { await reportQueue.add("load", { requestId: loadId }, { jobId: loadId, ...jobOptions }); }
-  catch (error) { await redis.del(stateKey(loadId), activeLoadKey(input)); throw error; }
+  catch (error) { await redis.del(stateKey(loadId), key); throw error; }
   return { loadId, reused: false };
 }
 

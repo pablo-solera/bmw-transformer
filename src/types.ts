@@ -1,5 +1,5 @@
 /** `series` and `family` override the request-level values so one load can mix development codes. */
-export type TypekeyInput = { typekey: string; baseType?: string; series?: string; family?: string };
+export type TypekeyInput = { typekey: string; baseType?: string; series?: string; family?: string; /** Extraction date (YYYYMMDD) whose data to load; the newest completed one when omitted. */ date?: string };
 
 export type ReportInput = {
   axCode: string;

@@ -16,3 +16,9 @@ test("a different typekey set, family, date or base type changes the fingerprint
   expect(loadFingerprint({ ...base, date: "20261022" })).not.toBe(original);
   expect(loadFingerprint({ ...base, typekeys: [{ typekey: "11EH", baseType: "11EG" }, { typekey: "21EH" }] })).not.toBe(original);
 });
+
+test("a per-typekey date makes a different load", () => {
+  const dated: ReportInput = { ...base, typekeys: [{ typekey: "11EH", date: "20261020" }, { typekey: "21EH" }] };
+  expect(loadFingerprint(dated)).not.toBe(loadFingerprint(base));
+  expect(loadFingerprint({ ...dated, typekeys: [{ typekey: "21EH" }, { typekey: "11EH", date: "20261020" }] })).toBe(loadFingerprint(dated));
+});

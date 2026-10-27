@@ -157,6 +157,7 @@ export const openApiDocument = {
         properties: {
           typekey: { type: "string", pattern: "^[A-Z0-9]{4}$", example: "11HC" }, baseType: { type: "string", maxLength: 10, description: "Opcional; por defecto el typekey" },
           series: { type: "string", maxLength: 10, description: "Opcional; sustituye a la serie de la petición" }, family: { type: "string", maxLength: 10, description: "Opcional; sustituye a la familia de la petición" },
+          date: { type: "string", pattern: "^\\d{8}$", description: "Opcional; fecha de extracción (YYYYMMDD) cuyos datos se cargan para este typekey. Por defecto la más reciente completada" },
         },
         required: ["typekey"],
       },

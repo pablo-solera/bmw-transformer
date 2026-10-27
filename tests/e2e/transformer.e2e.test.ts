@@ -148,6 +148,41 @@ if (!enabled) {
       expect(await json(`/loads/${queued.body.loadId}`)).toMatchObject({ status: 200, body: { status: "failed" } });
     });
 
+    test("fails a load when one of the requested typekeys is missing in S3, naming it, and writes no table", async () => {
+      const queued = await postLoad(loadBody("5XF", [{ ...synthetic.typekeys[0] }, { ...synthetic.incomplete }]));
+      const state = await finished(`/loads/${queued.body.loadId}`);
+      expect(state.status).toBe("failed");
+      expect(state.error).toContain("Faltan los marcadores completed en S3 de: 3C03");
+      expect(await tableNames()).not.toContain("5XF_05/0");
+    });
+
+    test("loads the data of the extraction date given for each typekey", async () => {
+      const dated = loadBody("6XF", synthetic.typekeys.map(item => ({ ...item, date: synthetic.date })));
+      const state = await finished(`/loads/${(await postLoad(dated)).body.loadId}`);
+      expect(state.status).toBe("completed");
+      expect(state.summary).toMatchObject({ typekeys: { "1A01": { date: synthetic.date, completed: true }, "2B02": { date: synthetic.date, completed: true } } });
+
+      const wrong = await finished(`/loads/${(await postLoad(loadBody("5XF", [{ ...synthetic.typekeys[0], date: "20250101" }]))).body.loadId}`);
+      expect(wrong.status).toBe("failed");
+      expect((await postLoad(loadBody("5XF", [{ ...synthetic.typekeys[0], date: "2025-01-01" }]))).status).toBe(400);
+    });
+
+    test("keeps the state of finished loads without expiry while failed ones expire", async () => {
+      const completed = await finished(`/loads/${(await postLoad(loadBody("2XF"))).body.loadId}`);
+      expect(completed.status).toBe("completed");
+      expect(await redis.ttl(`bmw-transformer:report:${completed.requestId}`)).toBe(-1);
+      const failed = await finished(`/loads/${(await postLoad(loadBody("5XF", [{ ...synthetic.incomplete }]))).body.loadId}`);
+      expect(failed.status).toBe("failed");
+      expect(await redis.ttl(`bmw-transformer:report:${failed.requestId}`)).toBeGreaterThan(0);
+    });
+
+    test("two identical requests sent at the same moment share a single load", async () => {
+      const responses = await Promise.all([postLoad(loadBody("7XF")), postLoad(loadBody("7XF"))]);
+      expect(responses.map(response => response.status).sort()).toEqual([200, 202]);
+      expect(responses[0]!.body.loadId).toBe(responses[1]!.body.loadId);
+      expect((await finished(`/loads/${responses[0]!.body.loadId}`)).status).toBe("completed");
+    });
+
     test("rejects invalid loads and unknown identifiers", async () => {
       expect((await postLoad({ axCode: "1XF", edition: "05/0", typekeys: [{ typekey: "1A01" }] })).status).toBe(400);
       expect((await postLoad({ ...loadBody("1XF"), typekeys: [{ ...synthetic.typekeys[0] }, { ...synthetic.typekeys[0] }] })).status).toBe(400);
@@ -216,7 +251,7 @@ if (!enabled) {
       expect((await tableNames()).filter(name => name.startsWith("__bmw_tmp_"))).toEqual([]);
       const pool = await getSqlPool();
       const campos = await pool.request().query("SELECT RTRIM(NomTable) t, COUNT(*) c FROM dbo.nomCamposTabla GROUP BY NomTable ORDER BY NomTable");
-      expect(campos.recordset.map(row => [row.t, row.c])).toEqual([["1XF_05/0", 2], ["2XF_05/0", 2], ["4XF_05/0", 2]]);
+      expect(campos.recordset.map(row => [row.t, row.c])).toEqual([["1XF_05/0", 2], ["2XF_05/0", 2], ["4XF_05/0", 2], ["6XF_05/0", 2], ["7XF_05/0", 2]]);
     });
   });
 }

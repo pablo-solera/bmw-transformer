@@ -11,7 +11,11 @@ export type StateUpdate = (patch: Partial<ReportState>) => Promise<void>;
 export async function loadPivot(input: ReportInput, update: StateUpdate, options: { requireCompleted?: boolean } = {}) {
   await update({ status: "resolving", stage: "Resolviendo typekeys completados en S3", progress: 5 });
   const imported = await importExtractedData(input, async (progress, stage) => update({ status: "importing", stage, progress: 10 + progress }));
-  if (options.requireCompleted && imported.selectedTypekeys.length === 0) throw new Error("Ningún typekey de la carga tiene su marcador completed en S3");
+  if (options.requireCompleted) {
+    if (imported.selectedTypekeys.length === 0) throw new Error("Ningún typekey de la carga tiene su marcador completed en S3");
+    const missing = input.typekeys.map(item => item.typekey).filter(typekey => !imported.selectedTypekeys.includes(typekey));
+    if (missing.length) throw new Error(`Faltan los marcadores completed en S3 de: ${missing.join(", ")}`);
+  }
   await update({ status: "pivoting", stage: "Generando pivote legacy", progress: 35 });
   const pivot = buildLegacyPivot(input, imported.catalog, imported.rates, imported.selectedTypekeys);
   let sqlPersistence: Record<string, unknown>;

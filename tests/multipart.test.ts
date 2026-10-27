@@ -126,3 +126,13 @@ test("POST /reports with a loadId rejects unknown, unfinished and malformed load
     expect((await fetch(`${base}/reports`, upload({ loadId: "not-a-uuid" }))).status).toBe(400);
   });
 });
+
+test("POST /loads accepts a date per typekey and rejects a malformed one", async () => {
+  await withServer({}, async base => {
+    const post = (typekeys: unknown) => fetch(`${base}/loads`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ axCode: "1XF", edition: "05/0", series: "7", family: "G70", typekeys }) });
+    expect((await post([{ typekey: "11EH", date: "20261020" }])).status).toBe(202);
+    expect(calls.loadInput).toMatchObject({ typekeys: [{ typekey: "11EH", date: "20261020" }] });
+    const invalid = await post([{ typekey: "11EH", date: "2026-10-20" }]);
+    expect(invalid.status).toBe(400);
+  });
+});

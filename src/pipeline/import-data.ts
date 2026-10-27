@@ -23,7 +23,8 @@ async function resolvePrefix(input: ReportInput, item: TypekeyInput): Promise<{ 
     const date = parts.at(-3);
     return key.endsWith(markerSuffix) && date && /^\d{8}$/.test(date) ? [date] : [];
   }))].sort().reverse();
-  const selectedDate = input.date ? dates.find(date => date === input.date) : dates[0];
+  const wantedDate = item.date ?? input.date;
+  const selectedDate = wantedDate ? dates.find(date => date === wantedDate) : dates[0];
   if (!selectedDate) return { completed: false };
   return { prefix: `${root}/${selectedDate}/${item.typekey}`, dateRoot: `${root}/${selectedDate}`, date: selectedDate, completed: true };
 }

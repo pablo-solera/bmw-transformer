@@ -25,6 +25,7 @@ export const reportInputSchema = z.object({
     baseType: z.string().min(1).max(10).optional(),
     series: z.string().min(1).max(10).optional(),
     family: z.string().min(1).max(10).regex(/^[A-Za-z0-9_]+$/).optional(),
+    date: z.string().regex(/^\d{8}$/).optional(),
   })).min(1),
 }).superRefine((input, context) => {
   input.typekeys.forEach((item, index) => {
